@@ -3,6 +3,7 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 import json
+import emoji
 
 load_dotenv()
 
@@ -19,33 +20,62 @@ class checkcontainer(discord.ui.LayoutView):
 
 
 class configstylemodal(discord.ui.Modal, title="Config Style"):
-    def __init__(self, radio1):
+    def __init__(self, radio1, radio2):
         super().__init__()
 
         self.description = discord.ui.TextDisplay(
                 content="**Configure the Starboard style**\n-# To modify the emoji use **/config-stars**")
-        
+        if "forward_message" in radio1:
+            defaultforward= True
+            defaultscreenshot = False
+            defaultwebhook = False
+        elif "screenshot" in radio1:
+            defaultforward = False
+            defaultscreenshot= True   
+            defaultwebhook=False
+        elif "webhook" in radio1:
+            defaultforward = False
+            defaultscreenshot= False 
+            defaultwebhook=True  
+        else:
+            defaultforward=False
+            defaultscreenshot = False
+            defaultwebhook = False   
         self.radio= discord.ui.Label(text="Style of the message", component=discord.ui.RadioGroup(required=True, options=[
             discord.RadioGroupOption(
-                label="Forward the message", description="The author does not appear in the starboard"
+                label="Forward the message", description="The author does not appear in the starboard", custom_id="forward_message", default=defaultforward
             ),
             discord.RadioGroupOption(
-                label="Generate a screenshot", description="The bot generate a screenshot of the message with the author"
+                label="Generate a screenshot", description="The bot generate a screenshot of the message with the author", custom_id="screenshot", default=defaultscreenshot
             ),
             discord.RadioGroupOption(
-                label="Send it with a webhook", description="Send a webhook with the author avatar and the message content"
+                label="Send it with a webhook", description="Send a webhook with the author avatar and the message content", custom_id="webhook", default=defaultwebhook
             )
             ]))
+
+        if "dont_show" in radio2:
+            defaultdontshow=True
+            defaultdisabledbutton=False
+            defaultlittletext=False
+        elif "disabled_button" in radio2:
+            defaultdontshow=False
+            defaultdisabledbutton=True
+            defaultlittletext=False
+        elif "little_text" in radio2:
+            defaultdontshow=False
+            defaultdisabledbutton=False
+            defaultlittletext=True 
+
         self.radio2 = discord.ui.Label(text="Config reaction count", 
                                        component=discord.ui.RadioGroup(required=True, options=[
                                                                        discord.RadioGroupOption(
-                                                                           label="Don't show the count", description="Hide the reaction count from the starboard"
+                                                                           label="Don't show the count", description="Hide the reaction count from the starboard", custom_id="dont_show", default=defaultdontshow
                                                                        ),
                                                                        discord.RadioGroupOption(
-                                                                           label="Disabled button", description="A disabled button with the reaction count"
+                                                                           label="Disabled button", description="A disabled button with the reaction count", custom_id="disabled_button", default=defaultdisabledbutton
                                                                        ),
                                                                        discord.RadioGroupOption(
-                                                                           label="Little text", description="the bot will send a little text below the message forwared"
+                                                                           label="Little text", description="the bot will send a little text below the message forwared", custom_id="little_text", default=defaultlittletext
                                                                        )]
                                                                        )
                                                                        )
@@ -54,10 +84,8 @@ class configstylemodal(discord.ui.Modal, title="Config Style"):
         self.add_item(self.radio)
         self.add_item(self.radio2)
     async def on_submit(self, interaction: discord.Interaction):
-        editconfig(interaction.guild_id, "channel", self.channel.component.values[0].id)
-        editconfig(interaction.guild_id, "emoji", self.emoji.component.value)
-        editconfig(interaction.guild_id, "count", int(self.count.component.value))
-        editconfig(interaction.guild_id, "checkboxes", self.checkboxes.component.values)
+        editconfig(interaction.guild_id, "style", self.radio.component.values)
+        editconfig(interaction.guild_id, "style_count", self.radio2.component.values)
         await interaction.response.send_message(
             view=checkcontainer()
         )
@@ -186,7 +214,7 @@ async def on_raw_reaction_add(payload):
     channel = bot.get_channel(payload.channel_id)
     msg = await channel.fetch_message(payload.message_id)
     config=readconfig(payload.guild_id)
-    if "edit_message" in str(config["checkboxes"]):
+    if "ignore_author" in str(config["checkboxes"]):
              ignore_author_reacc=True
     else:
              ignore_author_reacc=False
@@ -200,13 +228,43 @@ async def on_raw_reaction_add(payload):
 
     print(f"{payload.user_id} reaccionó con {payload.emoji} en el mensaje {payload.message_id}")
     print(f"tiene {count} reacciones")
-    if count >= int(config["count"]):
-        print("debe estar en starboard")
+    markdown = payload.emoji.id
+    configemoji = config["emoji"]
+    if markdown == True:
+            emojimarkdown = f":{payload.emoji.name}:"
+    else:
+            emojimarkdown = emoji.demojize(str(payload.emoji))
+    if count >= int(config["count"]) and emojimarkdown in configemoji:
+         print("debe estar en starboard")
 
 
 @bot.event
 async def on_raw_reaction_remove(payload):
     print(f"{payload.user_id} quitó {payload.emoji} del mensaje {payload.message_id}")
+    if payload.user_id == bot.user.id:
+            return
+    channel = bot.get_channel(payload.channel_id)
+    msg = await channel.fetch_message(payload.message_id)
+    config=readconfig(payload.guild_id)
+    if "delete_message" in str(config["checkboxes"]):
+            delete_message=True
+    else:
+            delete_message=False
+    count = 0
+    for reaction in msg.reactions:
+        if str(reaction.emoji) == str(payload.emoji):
+            count = reaction.count
+    configcount= int(config["count"])
+    configemoji = config["emoji"]
+    markdown = payload.emoji.id
+    if markdown == True:
+        emojimarkdown = f":{payload.emoji.name}:"
+    else:
+        emojimarkdown = emoji.demojize(str(payload.emoji))
+    if configcount > count and delete_message == True and emojimarkdown in configemoji:
+        print("el mensaje se debe eliminar")      
+
+
 
 
 @bot.tree.command(name="config-stars", description="Change stars configurations")
@@ -260,6 +318,9 @@ async def hola(interaction: discord.Interaction):
 
 @bot.tree.command(name="config-style", description="change the starboard design")
 async def hola(interaction: discord.Interaction):
-    await interaction.response.send_modal(configstylemodal(radio1=True))
+    config=readconfig(interaction.guild_id)
+    print(config["style"])
+    print(config["style_count"])
+    await interaction.response.send_modal(configstylemodal())
 
 bot.run(os.getenv("ULTRASECRETDISCORDTOKEN"))
