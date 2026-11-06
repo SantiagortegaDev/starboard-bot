@@ -12,16 +12,35 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.reactions = True
 
-bot = commands.Bot(intents=intents, command_prefix=None)
+bot = commands.Bot(intents=intents, command_prefix="ibetyoudidntwillguessthisprefix!")
 
 class checkcontainer(discord.ui.LayoutView):
     container1=discord.ui.Container(
         discord.ui.TextDisplay(content="<:check:1566080822141001929> **Config Saved**"),
         )
 
+class dbutton(discord.ui.LayoutView):
+    def __init__(self, emoji, count):
+        super().__init__()
+        self.container1=discord.ui.ActionRow(
+            discord.ui.Button(
+                style=discord.ButtonStyle.secondary,
+                label=count,
+                emoji=emoji,
+                disabled=True
+            ),
+    )
+    
+        self.add_item(self.container1)
+
 class invalidemoji(discord.ui.LayoutView):
     container1=discord.ui.Container(
-        discord.ui.TextDisplay(content="<:equis:1568088086154453012> **Error: emoji invalid**\n-# check the emoji markdown and it's in the server"),
+        discord.ui.TextDisplay(content="<:equis:1568088086154453012> **Error:** emoji invalid\n-# check the emoji markdown and it's in the server"),
+        )
+
+class channelerror(discord.ui.LayoutView):
+    container1=discord.ui.Container(
+        discord.ui.TextDisplay(content="<:equis:1568088086154453012> **Error:** i can't see that channel\n-# check i have permissions in that channel\n-# and that the channel exist of course"),
         )
 
 class configstylemodal(discord.ui.Modal, title="Config Style"):
@@ -32,26 +51,26 @@ class configstylemodal(discord.ui.Modal, title="Config Style"):
                 content="**Configure the Starboard style**\n-# To modify the emoji use **/config-stars**")
         if "forward_message" in radio1:
             defaultforward= True
-            defaultscreenshot = False
+            defaultcontainer = False
             defaultwebhook = False
-        elif "screenshot" in radio1:
+        elif "container" in radio1:
             defaultforward = False
-            defaultscreenshot= True   
+            defaultcontainer= True   
             defaultwebhook=False
         elif "webhook" in radio1:
             defaultforward = False
-            defaultscreenshot= False 
+            defaultcontainer= False 
             defaultwebhook=True  
         else:
             defaultforward=False
-            defaultscreenshot = False
+            defaultcontainer = False
             defaultwebhook = False   
         self.radio= discord.ui.Label(text="Style of the message", component=discord.ui.RadioGroup(required=True, options=[
             discord.RadioGroupOption(
                 label="Forward the message", description="The author does not appear in the starboard", value="forward_message", default=defaultforward
             ),
             discord.RadioGroupOption(
-                label="Generate a screenshot", description="The bot generate a screenshot of the message with the author", value="screenshot", default=defaultscreenshot
+                label="Send it in a container", description="Is like a embed but better with the message", value="container", default=defaultcontainer
             ),
             discord.RadioGroupOption(
                 label="Send it with a webhook", description="Send a webhook with the author avatar and the message content", value="webhook", default=defaultwebhook
@@ -171,12 +190,21 @@ class configurationmodal(discord.ui.Modal, title="Config Stars"):
         self.add_item(self.count)
         self.add_item(self.checkboxes)
     async def on_submit(self, interaction: discord.Interaction):
+        try:
+            channel= await bot.fetch_channel(self.channel.component.values[0].id)
+            channelexist=True
+        except discord.NotFound:
+            channelexist=False
+        except discord.Forbidden:
+            channelexist=False
         emoji=self.emoji.component.value
         emoji2 = emoji.strip()
+        emoji2 = emoji_lib.emojize(emoji2, language="alias")
         emoji3 = discord.PartialEmoji.from_str(emoji2)
         emoji4 = self.emoji.component.value.strip()
         emoji6 = interaction.client.get_emoji(emoji3.id)
         if emoji_lib.is_emoji(emoji2) or emoji6 is not None:
+          if channelexist == True:
             editconfig(interaction.guild_id, "emoji", self.emoji.component.value)
             editconfig(interaction.guild_id, "channel", self.channel.component.values[0].id)    
             editconfig(interaction.guild_id, "count", int(self.count.component.value))
@@ -184,6 +212,8 @@ class configurationmodal(discord.ui.Modal, title="Config Stars"):
             await interaction.response.send_message(
                         view=checkcontainer()
                     )
+          else:
+              await interaction.response.send_message(view=channelerror())  
         else:
            await interaction.response.send_message(view=invalidemoji())
 
@@ -209,7 +239,6 @@ def readconfig(server_id):
     except (FileNotFoundError, json.JSONDecodeError):
         editjson({})
         return {}    
-
 
 
 def editconfig(server_id, llave, valor):
@@ -249,11 +278,22 @@ async def on_raw_reaction_add(payload):
     configemoji = config["emoji"]
     if markdown == True:
             emojimarkdown = f":{payload.emoji.name}:"
+            text = emoji_lib.emojize(emojimarkdown, language="alias")
+            emojibtn = payload.emoji
     else:
             emojimarkdown = emoji.demojize(str(payload.emoji))
+            emojibtn = payload.emoji
     if count >= int(config["count"]) and emojimarkdown in configemoji:
-         print("debe estar en starboard")
-
+        channel = bot.get_channel(payload.channel_id)
+        msg = await channel.fetch_message(payload.message_id)
+        config=readconfig(payload.guild_id)
+        if config["style"] == "forward_message":
+            starboard = bot.get_channel(int(config["channel"]))
+            await msg.forward(starboard)
+            if config["style_count"] == "little_text":
+                await starboard.send(f"-# {emojimarkdown} {count}")
+            if config["style_count"] == "disabled_button":
+                await starboard.send(view=dbutton(emojibtn, count))
 
 @bot.event
 async def on_raw_reaction_remove(payload):
