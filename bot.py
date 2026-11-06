@@ -4,6 +4,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 import json
 import emoji
+import emoji as emoji_lib
 
 load_dotenv()
 
@@ -18,6 +19,10 @@ class checkcontainer(discord.ui.LayoutView):
         discord.ui.TextDisplay(content="<:check:1566080822141001929> **Config Saved**"),
         )
 
+class invalidemoji(discord.ui.LayoutView):
+    container1=discord.ui.Container(
+        discord.ui.TextDisplay(content="<:equis:1568088086154453012> **Error: emoji invalid**\n-# check the emoji markdown and it's in the server"),
+        )
 
 class configstylemodal(discord.ui.Modal, title="Config Style"):
     def __init__(self, radio1, radio2):
@@ -43,13 +48,13 @@ class configstylemodal(discord.ui.Modal, title="Config Style"):
             defaultwebhook = False   
         self.radio= discord.ui.Label(text="Style of the message", component=discord.ui.RadioGroup(required=True, options=[
             discord.RadioGroupOption(
-                label="Forward the message", description="The author does not appear in the starboard", custom_id="forward_message", default=defaultforward
+                label="Forward the message", description="The author does not appear in the starboard", value="forward_message", default=defaultforward
             ),
             discord.RadioGroupOption(
-                label="Generate a screenshot", description="The bot generate a screenshot of the message with the author", custom_id="screenshot", default=defaultscreenshot
+                label="Generate a screenshot", description="The bot generate a screenshot of the message with the author", value="screenshot", default=defaultscreenshot
             ),
             discord.RadioGroupOption(
-                label="Send it with a webhook", description="Send a webhook with the author avatar and the message content", custom_id="webhook", default=defaultwebhook
+                label="Send it with a webhook", description="Send a webhook with the author avatar and the message content", value="webhook", default=defaultwebhook
             )
             ]))
 
@@ -65,17 +70,21 @@ class configstylemodal(discord.ui.Modal, title="Config Style"):
             defaultdontshow=False
             defaultdisabledbutton=False
             defaultlittletext=True 
+        else:
+            defaultdontshow=False
+            defaultdisabledbutton = False
+            defaultlittletext = False      
 
         self.radio2 = discord.ui.Label(text="Config reaction count", 
                                        component=discord.ui.RadioGroup(required=True, options=[
                                                                        discord.RadioGroupOption(
-                                                                           label="Don't show the count", description="Hide the reaction count from the starboard", custom_id="dont_show", default=defaultdontshow
+                                                                           label="Don't show the count", description="Hide the reaction count from the starboard", value="dont_show", default=defaultdontshow
                                                                        ),
                                                                        discord.RadioGroupOption(
-                                                                           label="Disabled button", description="A disabled button with the reaction count", custom_id="disabled_button", default=defaultdisabledbutton
+                                                                           label="Disabled button", description="A disabled button with the reaction count", value="disabled_button", default=defaultdisabledbutton
                                                                        ),
                                                                        discord.RadioGroupOption(
-                                                                           label="Little text", description="the bot will send a little text below the message forwared", custom_id="little_text", default=defaultlittletext
+                                                                           label="Little text", description="the bot will send a little text below the message forwared", value="little_text", default=defaultlittletext
                                                                        )]
                                                                        )
                                                                        )
@@ -84,8 +93,8 @@ class configstylemodal(discord.ui.Modal, title="Config Style"):
         self.add_item(self.radio)
         self.add_item(self.radio2)
     async def on_submit(self, interaction: discord.Interaction):
-        editconfig(interaction.guild_id, "style", self.radio.component.values)
-        editconfig(interaction.guild_id, "style_count", self.radio2.component.values)
+        editconfig(interaction.guild_id, "style", self.radio.component.value)
+        editconfig(interaction.guild_id, "style_count", self.radio2.component.value)
         await interaction.response.send_message(
             view=checkcontainer()
         )
@@ -111,7 +120,7 @@ class configurationmodal(discord.ui.Modal, title="Config Stars"):
     
         self.emoji=discord.ui.Label(
             text="Emoji",
-            description="In markdown",
+            description="In markdown, without spaces",
             component=discord.ui.TextInput(
                 required=True,
                 style=discord.TextStyle.short,
@@ -162,13 +171,21 @@ class configurationmodal(discord.ui.Modal, title="Config Stars"):
         self.add_item(self.count)
         self.add_item(self.checkboxes)
     async def on_submit(self, interaction: discord.Interaction):
-        editconfig(interaction.guild_id, "channel", self.channel.component.values[0].id)
-        editconfig(interaction.guild_id, "emoji", self.emoji.component.value)
-        editconfig(interaction.guild_id, "count", int(self.count.component.value))
-        editconfig(interaction.guild_id, "checkboxes", self.checkboxes.component.values)
-        await interaction.response.send_message(
-            view=checkcontainer()
-        )
+        emoji=self.emoji.component.value
+        emoji2 = emoji.strip()
+        emoji3 = discord.PartialEmoji.from_str(emoji2)
+        emoji4 = self.emoji.component.value.strip()
+        emoji6 = interaction.client.get_emoji(emoji3.id)
+        if emoji_lib.is_emoji(emoji2) or emoji6 is not None:
+            editconfig(interaction.guild_id, "emoji", self.emoji.component.value)
+            editconfig(interaction.guild_id, "channel", self.channel.component.values[0].id)    
+            editconfig(interaction.guild_id, "count", int(self.count.component.value))
+            editconfig(interaction.guild_id, "checkboxes", self.checkboxes.component.values)
+            await interaction.response.send_message(
+                        view=checkcontainer()
+                    )
+        else:
+           await interaction.response.send_message(view=invalidemoji())
 
 
 
@@ -319,8 +336,13 @@ async def hola(interaction: discord.Interaction):
 @bot.tree.command(name="config-style", description="change the starboard design")
 async def hola(interaction: discord.Interaction):
     config=readconfig(interaction.guild_id)
-    print(config["style"])
-    print(config["style_count"])
-    await interaction.response.send_modal(configstylemodal())
+    if config["style"]:
+        radio1=str(config["style"])
+        radio2=str(config["style_count"])
+        #why only 1 if? because the 2 radio options are required so if 1 is in the config the also the other is going to be
+    else:
+        radio1=""
+        radio2=""    
+    await interaction.response.send_modal(configstylemodal(radio1=radio1, radio2=radio2))
 
 bot.run(os.getenv("ULTRASECRETDISCORDTOKEN"))
