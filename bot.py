@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import json
 import emoji
 import emoji as emoji_lib
+import asyncio
 
 load_dotenv()
 
@@ -32,6 +33,13 @@ class dbutton(discord.ui.LayoutView):
     )
     
         self.add_item(self.container1)
+
+class welcomecontainer(discord.ui.LayoutView):
+    container1=discord.ui.Container(
+        discord.ui.TextDisplay(content="# Hi!\nThanks for invite me to your server"),
+        discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
+        discord.ui.TextDisplay(content="to start use **/config-stars** and\nthen **/config-style** for the messages")
+        )
 
 class invalidemoji(discord.ui.LayoutView):
     container1=discord.ui.Container(
@@ -248,6 +256,35 @@ def editconfig(server_id, llave, valor):
     datos[str(server_id)] = config
     editjson(datos)       
 
+def readstars():
+    try:
+        with open("stars_msg.json", "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def savestars(id):
+    with open("stars_msg.json", "w", encoding="utf-8") as f:
+        json.dump(id, f, indent=4, ensure_ascii=False)
+
+def readstars2(id):
+    stars = readstars()
+    return stars.get(str(id))
+
+
+
+def editstars(id, id2):
+    stars = readstars()
+    stars[str(id)] = str(id2)
+    savestars(stars)
+
+def deletestars(id):
+    stars = readstars()
+    stars.pop(str(id), None)
+    savestars(stars)    
+
+
 @bot.event
 async def on_ready():
     await bot.tree.sync()
@@ -289,11 +326,12 @@ async def on_raw_reaction_add(payload):
         config=readconfig(payload.guild_id)
         if config["style"] == "forward_message":
             starboard = bot.get_channel(int(config["channel"]))
-            await msg.forward(starboard)
+            forwardmessage=await msg.forward(starboard)
             if config["style_count"] == "little_text":
-                await starboard.send(f"-# {emojimarkdown} {count}")
+                starmessage=await starboard.send(f"-# {emojimarkdown} {count}")
             if config["style_count"] == "disabled_button":
-                await starboard.send(view=dbutton(emojibtn, count))
+                starmessage=await starboard.send(view=dbutton(emojibtn, count))
+        editstars(payload.message_id, f"{forwardmessage.id}&{starmessage.id}")        
 
 @bot.event
 async def on_raw_reaction_remove(payload):
@@ -319,7 +357,24 @@ async def on_raw_reaction_remove(payload):
     else:
         emojimarkdown = emoji.demojize(str(payload.emoji))
     if configcount > count and delete_message == True and emojimarkdown in configemoji:
-        print("el mensaje se debe eliminar")      
+        print("el mensaje se debe eliminar")   
+        if readstars2(payload.message_id):
+            ids=readstars2(payload.message_id)
+            if "&" in ids:
+             id1, id2 = ids.split("&")
+             config = readconfig(payload.guild_id)
+             channel = bot.get_channel(int(config["channel"]))
+             msg = await channel.fetch_message(int(id1))
+             await msg.delete()
+             msg2 = await channel.fetch_message(int(id2))
+             await msg2.delete()
+            else:
+                config = readconfig(payload.guild_id)
+                channel = bot.get_channel(int(config["channel"]))
+                msg = await channel.fetch_message(int(ids))
+                await msg.delete() 
+
+
 
 
 
@@ -384,5 +439,14 @@ async def hola(interaction: discord.Interaction):
         radio1=""
         radio2=""    
     await interaction.response.send_modal(configstylemodal(radio1=radio1, radio2=radio2))
+
+@bot.event
+async def on_guild_join(guild):
+    try:
+     owner = await bot.fetch_user(guild.owner_id)
+     await owner.send(view=welcomecontainer())
+    except discord.Forbidden:
+        #why people keep his dms close?
+        pass 
 
 bot.run(os.getenv("ULTRASECRETDISCORDTOKEN"))
