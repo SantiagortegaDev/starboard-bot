@@ -52,39 +52,11 @@ class channelerror(discord.ui.LayoutView):
         )
 
 class configstylemodal(discord.ui.Modal, title="Config Style"):
-    def __init__(self, radio1, radio2):
+    def __init__(self, radio2):
         super().__init__()
 
         self.description = discord.ui.TextDisplay(
                 content="**Configure the Starboard style**\n-# To modify the emoji use **/config-stars**")
-        if "forward_message" in radio1:
-            defaultforward= True
-            defaultcontainer = False
-            defaultwebhook = False
-        elif "container" in radio1:
-            defaultforward = False
-            defaultcontainer= True   
-            defaultwebhook=False
-        elif "webhook" in radio1:
-            defaultforward = False
-            defaultcontainer= False 
-            defaultwebhook=True  
-        else:
-            defaultforward=False
-            defaultcontainer = False
-            defaultwebhook = False   
-        self.radio= discord.ui.Label(text="Style of the message", component=discord.ui.RadioGroup(required=True, options=[
-            discord.RadioGroupOption(
-                label="Forward the message", description="The author does not appear in the starboard", value="forward_message", default=defaultforward
-            ),
-            discord.RadioGroupOption(
-                label="Send it in a container", description="Is like a embed but better with the message", value="container", default=defaultcontainer
-            ),
-            discord.RadioGroupOption(
-                label="Send it with a webhook", description="Send a webhook with the author avatar and the message content", value="webhook", default=defaultwebhook
-            )
-            ]))
-
         if "dont_show" in radio2:
             defaultdontshow=True
             defaultdisabledbutton=False
@@ -117,10 +89,8 @@ class configstylemodal(discord.ui.Modal, title="Config Style"):
                                                                        )
 
         self.add_item(self.description)
-        self.add_item(self.radio)
         self.add_item(self.radio2)
     async def on_submit(self, interaction: discord.Interaction):
-        editconfig(interaction.guild_id, "style", self.radio.component.value)
         editconfig(interaction.guild_id, "style_count", self.radio2.component.value)
         await interaction.response.send_message(
             view=checkcontainer()
@@ -180,12 +150,6 @@ class configurationmodal(discord.ui.Modal, title="Config Stars"):
                     description="if the reaction count drops",
                     value="delete_message",
                     default=checkbox2
-                ),
-                discord.CheckboxGroupOption(
-                    label="Edit message",
-                    description="Sync the message content in the starboard",
-                    value="edit_message",
-                    default=checkbox3
                 )
             ],
             required=False
@@ -225,6 +189,15 @@ class configurationmodal(discord.ui.Modal, title="Config Stars"):
         else:
            await interaction.response.send_message(view=invalidemoji())
 
+class helpcontainer(discord.ui.LayoutView):    
+    container1 = discord.ui.Container(
+        discord.ui.TextDisplay(content="# Help!\n-# Make sure to config the bot at the start"),
+        discord.ui.Separator(visible=True, spacing=discord.SeparatorSpacing.small),
+        discord.ui.TextDisplay(content="**/config-stars:**\n-#  configure the channel, the emoji, and some extra options"),
+        discord.ui.TextDisplay(content="**/config-style:**\n-# select how do you want the style of the reactions count"),
+        discord.ui.TextDisplay(content="**/help:**\n-# well, you just used this commands... i will skip this"),
+        accent_colour=discord.Colour(5793266),
+    )
 
 
 def readjson():
@@ -324,14 +297,16 @@ async def on_raw_reaction_add(payload):
         channel = bot.get_channel(payload.channel_id)
         msg = await channel.fetch_message(payload.message_id)
         config=readconfig(payload.guild_id)
-        if config["style"] == "forward_message":
-            starboard = bot.get_channel(int(config["channel"]))
-            forwardmessage=await msg.forward(starboard)
-            if config["style_count"] == "little_text":
-                starmessage=await starboard.send(f"-# {emojimarkdown} {count}")
-            if config["style_count"] == "disabled_button":
-                starmessage=await starboard.send(view=dbutton(emojibtn, count))
-        editstars(payload.message_id, f"{forwardmessage.id}&{starmessage.id}")        
+        starboard = bot.get_channel(int(config["channel"]))
+        forwardmessage=await msg.forward(starboard)
+        ids = str(forwardmessage.id)
+        if config.get("style_count") == "little_text":
+            starmessage=await starboard.send(f"-# {emojimarkdown} {count}")
+            ids += f"&{starmessage.id}"
+        if config.get("style_count") == "disabled_button":
+            starmessage=await starboard.send(view=dbutton(emojibtn, count))
+            ids += f"&{starmessage.id}"
+        editstars(payload.message_id, ids)   
 
 @bot.event
 async def on_raw_reaction_remove(payload):
@@ -422,7 +397,7 @@ async def hola(interaction: discord.Interaction):
 
 @bot.tree.command(name="help", description="HEEEEEEEEELP")
 async def hola(interaction: discord.Interaction):
-    await interaction.response.send_message()
+    await interaction.response.send_message(view=helpcontainer())
     
 @bot.tree.command(name="ping", description="pong, well you know")
 async def hola(interaction: discord.Interaction):
@@ -431,14 +406,11 @@ async def hola(interaction: discord.Interaction):
 @bot.tree.command(name="config-style", description="change the starboard design")
 async def hola(interaction: discord.Interaction):
     config=readconfig(interaction.guild_id)
-    if config["style"]:
-        radio1=str(config["style"])
+    if config.get("style_count"):
         radio2=str(config["style_count"])
-        #why only 1 if? because the 2 radio options are required so if 1 is in the config the also the other is going to be
     else:
-        radio1=""
         radio2=""    
-    await interaction.response.send_modal(configstylemodal(radio1=radio1, radio2=radio2))
+    await interaction.response.send_modal(configstylemodal(radio2=radio2))
 
 @bot.event
 async def on_guild_join(guild):
